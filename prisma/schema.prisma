@@ -1,0 +1,312 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  male
+  female
+  other
+}
+
+enum VerificationMethod {
+  ai_selfie
+  manual
+  govt_id
+}
+
+enum PerformanceMode {
+  low
+  balanced
+  high
+}
+
+enum SwipeAction {
+  like
+  dislike
+  superlike
+}
+
+enum MessageType {
+  text
+  image
+  file
+  voice
+}
+
+enum CoinTransactionType {
+  earned
+  spent
+  purchased
+}
+
+enum CallStatus {
+  initiated
+  ringing
+  answered
+  ended
+  missed
+  rejected
+}
+
+enum LiveStreamStatus {
+  live
+  ended
+}
+
+enum LiveMessageType {
+  text
+  sticker
+  gift
+  reaction
+}
+
+model User {
+  id                 String                @id @default(uuid())
+  email              String?               @unique
+  phone              String?               @unique
+  passwordHash       String?
+  fullName           String
+  age                Int
+  gender             Gender
+  bio                String?
+  locationLat        Float?
+  locationLng        Float?
+  locationCity       String?
+  locationCountry    String?
+  interests          String[]              @default([])
+  job                String?
+  education          String?
+  isVerified         Boolean               @default(false)
+  verificationMethod VerificationMethod?
+  isPremium          Boolean               @default(false)
+  premiumExpiresAt   DateTime?
+  coins              Int                   @default(10)
+  lastLoginAt        DateTime?
+  lastActiveAt       DateTime?
+  isOnline           Boolean               @default(false)
+  deviceId           String?
+  isBlocked          Boolean               @default(false)
+  blockedUntil       DateTime?
+  isSuspended        Boolean               @default(false)
+  suspensionReason   String?
+  swipeMinAge        Int                   @default(18)
+  swipeMaxAge        Int                   @default(100)
+  swipeMaxDistance   Int                   @default(50)
+  swipeInterestedIn  String[]              @default([])
+  dailyCheckInLast   DateTime?
+  dailyCheckInStreak Int                   @default(0)
+  referredById       String?
+  referralCode       String?               @unique
+  language           String?               @default("en")
+  disableScreenshot  Boolean               @default(false)
+  performanceMode    PerformanceMode       @default(balanced)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  // Relations
+  referredBy         User?                 @relation("UserReferrals", fields: [referredById], references: [id])
+  referredUsers      User[]                @relation("UserReferrals")
+  photos             UserPhoto[]
+  swipesGiven        Swipe[]               @relation("SwipesGiven")
+  swipesReceived     Swipe[]               @relation("SwipesReceived")
+  matchesAsUserA     Match[]               @relation("MatchUserA")
+  matchesAsUserB     Match[]               @relation("MatchUserB")
+  matchesUnmatched   Match[]               @relation("MatchUnmatchedBy")
+  coinTransactions   CoinTransaction[]
+  chatsBlocked       Chat[]                @relation("ChatBlockedBy")
+  chatsReported      Chat[]                @relation("ChatReportedBy")
+  chatMessages       ChatMessage[]
+  callsMade          Call[]                @relation("CallsMade")
+  callsReceived      Call[]                @relation("CallsReceived")
+  liveStreams        LiveStream[]          @relation("LiveStreamHost")
+  liveMessages       LiveStreamMessage[]
+  liveGiftsSent      LiveStreamGift[]      @relation("GiftSender")
+  liveViewerEntries  LiveStreamViewer[]
+}
+
+model UserPhoto {
+  id         String   @id @default(uuid())
+  userId     String
+  url        String
+  isPrimary  Boolean  @default(false)
+  uploadedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Swipe {
+  id           String      @id @default(uuid())
+  swiperId     String
+  swipedUserId String
+  action       SwipeAction
+  createdAt    DateTime    @default(now())
+
+  swiper     User @relation("SwipesGiven", fields: [swiperId], references: [id])
+  swipedUser User @relation("SwipesReceived", fields: [swipedUserId], references: [id])
+
+  @@unique([swiperId, swipedUserId])
+  @@index([swiperId, createdAt])
+}
+
+model Match {
+  id            String   @id @default(uuid())
+  userAId       String
+  userBId       String
+  matchedAt     DateTime @default(now())
+  lastMessageAt DateTime?
+  isActive      Boolean  @default(true)
+  unmatchedById String?
+  unmatchedAt   DateTime?
+
+  userA       User @relation("MatchUserA", fields: [userAId], references: [id])
+  userB       User @relation("MatchUserB", fields: [userBId], references: [id])
+  unmatchedBy User? @relation("MatchUnmatchedBy", fields: [unmatchedById], references: [id])
+  chat        Chat?
+  calls       Call[]
+
+  @@index([userAId])
+  @@index([userBId])
+  @@index([matchedAt])
+}
+
+model Chat {
+  id           String   @id @default(uuid())
+  matchId      String   @unique
+  lastMessageAt DateTime? @default(now())
+  blockedById  String?
+  reportedById String?
+  reportReason String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  match      Match @relation(fields: [matchId], references: [id])
+  blockedBy  User? @relation("ChatBlockedBy", fields: [blockedById], references: [id])
+  reportedBy User? @relation("ChatReportedBy", fields: [reportedById], references: [id])
+  messages   ChatMessage[]
+
+  @@index([lastMessageAt])
+}
+
+model ChatMessage {
+  id        String      @id @default(uuid())
+  chatId    String
+  senderId  String
+  message   String
+  type      MessageType @default(text)
+  fileUrl   String?
+  isRead    Boolean     @default(false)
+  readAt    DateTime?
+  createdAt DateTime    @default(now())
+
+  chat   Chat @relation(fields: [chatId], references: [id])
+  sender User @relation(fields: [senderId], references: [id])
+
+  @@index([chatId, createdAt])
+}
+
+model CoinTransaction {
+  id          String               @id @default(uuid())
+  userId      String
+  type        CoinTransactionType
+  amount      Int
+  description String?
+  createdAt   DateTime             @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model Call {
+  id            String     @id @default(uuid())
+  callerId      String
+  receiverId    String
+  matchId       String?
+  status        CallStatus @default(initiated)
+  startedAt     DateTime?
+  endedAt       DateTime?
+  duration      Int?
+  coinsDeducted Int?
+  createdAt     DateTime   @default(now())
+
+  caller   User   @relation("CallsMade", fields: [callerId], references: [id])
+  receiver User   @relation("CallsReceived", fields: [receiverId], references: [id])
+  match    Match? @relation(fields: [matchId], references: [id])
+
+  @@index([callerId, createdAt])
+  @@index([receiverId, createdAt])
+}
+
+model LiveStream {
+  id            String            @id @default(uuid())
+  hostId        String
+  title         String?           @default("Live Stream")
+  status        LiveStreamStatus  @default(live)
+  totalEarnings Int               @default(0)
+  createdAt     DateTime          @default(now())
+  endedAt       DateTime?
+
+  host     User                @relation("LiveStreamHost", fields: [hostId], references: [id])
+  viewers  LiveStreamViewer[]
+  messages LiveStreamMessage[]
+  gifts    LiveStreamGift[]
+
+  @@index([hostId, createdAt])
+}
+
+model LiveStreamViewer {
+  id           String   @id @default(uuid())
+  liveStreamId String
+  userId       String
+  joinedAt     DateTime @default(now())
+
+  liveStream LiveStream @relation(fields: [liveStreamId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@index([liveStreamId])
+  @@index([userId])
+}
+
+model LiveStreamMessage {
+  id           String          @id @default(uuid())
+  liveStreamId String
+  userId       String
+  type         LiveMessageType
+  content      String?
+  emoji        String?
+  createdAt    DateTime        @default(now())
+
+  liveStream LiveStream @relation(fields: [liveStreamId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@index([liveStreamId, createdAt])
+}
+
+model LiveStreamGift {
+  id           String   @id @default(uuid())
+  liveStreamId String
+  fromUserId   String
+  giftId       Int
+  coins        Int
+  sentAt       DateTime @default(now())
+
+  liveStream LiveStream @relation(fields: [liveStreamId], references: [id])
+  fromUser   User       @relation("GiftSender", fields: [fromUserId], references: [id])
+
+  @@index([liveStreamId])
+  @@index([fromUserId])
+}
